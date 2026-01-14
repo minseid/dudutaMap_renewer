@@ -5,6 +5,7 @@ import { Category, DUDU_DATA } from './data';
 import SettingsPage from './settings/SettingsPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { Analytics } from "@vercel/analytics/react";
+import FriendsPage from './friends/FriendsPage';
 
 
 function App() {
@@ -350,6 +351,7 @@ function App() {
         {activeTab === 'map' && <div style={{ width: '100%', height: '100%' }}><MapComponent markers={filteredMarkers} /></div>}
         {activeTab === 'home' && <Placeholder text="🏠 집 공유페이지 개발중" />}
         {activeTab === 'friends' && <Placeholder text="👥 친구 찾기페이지 개발중" />}
+        //{activeTab === 'friends' && <FriendsPage isDarkMode={isDarkMode} />}
         {activeTab === 'settings' && (
           <SettingsPage 
             isDarkMode={isDarkMode} 

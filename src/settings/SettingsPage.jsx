@@ -89,7 +89,8 @@ const SettingsPage = ({ isDarkMode, setIsDarkMode }) => {
         </div>
         {/* 하단 버전 정보 */}
         <div style={{ marginTop: '30px', textAlign: 'center', color: '#aaa', fontSize: '12px' }}>
-          현재 버전: v1.0.0 <br/>
+          현재 버전: v1.0.1 <br/>
+          맵 이미지 업데이트
         </div>
       </div>
     </div>
