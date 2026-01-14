@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Map, Home, Users, Settings, Filter, ChevronDown, CheckSquare, Square } from 'lucide-react'; 
 import MapComponent from './components/MapComponent';
 import { Category, DUDU_DATA } from './data'; 
+import { COUPON_NOTICE_TEXT, COUPON_INFO } from './couponData';
 import SettingsPage from './settings/SettingsPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { Analytics } from "@vercel/analytics/react";
@@ -14,6 +15,7 @@ function App() {
   const [expandedCategories, setExpandedCategories] = useState({});
   const [checkedItems, setCheckedItems] = useState({});
   const [isDarkMode, setIsDarkMode] = useLocalStorage('setting-darkMode', false);
+  const [isCouponOpen, setIsCouponOpen] = useState(false);
 
   // ✨ 화면 크기 감지 (모바일 여부 확인)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -213,6 +215,106 @@ function App() {
       overflow: 'hidden' ,
       backgroundColor: isDarkMode ? '#121212' : '#ffffff',
     },
+    // 맵스 홈 상단 공지 바
+    noticeBar: {
+      width: '100%',
+      boxSizing: 'border-box',
+      padding: isMobile ? '14px 14px' : '16px 20px',
+      backgroundColor: isDarkMode ? '#1f2937' : '#e0f2fe',
+      color: isDarkMode ? '#e5e7eb' : '#0f172a',
+      fontSize: '14px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      borderBottom: isDarkMode ? '1px solid #111827' : '1px solid #bae6fd',
+    },
+    noticeLeft: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      flex: 1,
+      minWidth: 0,
+    },
+    noticeEmoji: { fontSize: '20px' },
+    noticeText: {
+      lineHeight: 1.4,
+      whiteSpace: 'pre-line',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    },
+    couponButton: {
+      flexShrink: 0,
+      borderRadius: 999,
+      border: 'none',
+      padding: isMobile ? '8px 12px' : '8px 14px',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      backgroundColor: isDarkMode ? '#4b5563' : '#0ea5e9',
+      color: '#f9fafb',
+    },
+    couponPanelWrapper: {
+      position: 'absolute',
+      inset: 0,
+      display: isCouponOpen ? 'flex' : 'none',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 2000,
+      backgroundColor: 'rgba(0,0,0,0.35)',
+      backdropFilter: 'blur(2px)',
+    },
+    couponPanel: {
+      pointerEvents: 'auto',
+      minWidth: 260,
+      maxWidth: '80%',
+      padding: '18px 20px 16px',
+      borderRadius: 16,
+      boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+      backgroundColor: isDarkMode ? '#020617' : '#f9fafb',
+      color: isDarkMode ? '#e5e7eb' : '#0f172a',
+      boxSizing: 'border-box',
+      zIndex: 2001,
+    },
+    couponTitle: {
+      fontSize: 14,
+      fontWeight: 'bold',
+      marginBottom: 8,
+    },
+    couponCodesWrapper: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: 8,
+      marginTop: 4,
+      marginBottom: 12,
+    },
+    couponCodeBox: {
+      padding: '8px 10px',
+      borderRadius: 10,
+      backgroundColor: isDarkMode ? '#111827' : '#e5e7eb',
+      fontFamily: 'monospace',
+      fontSize: 13,
+      textAlign: 'center',
+      letterSpacing: 0.3,
+      wordBreak: 'break-all',
+    },
+    couponSmall: {
+      fontSize: 11,
+      opacity: 0.8,
+    },
+    couponCloseBtn: {
+      display: 'block',
+      width: '100%',
+      marginTop: 6,
+      padding: '6px 0',
+      borderRadius: 999,
+      border: 'none',
+      fontSize: 12,
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      backgroundColor: isDarkMode ? '#334155' : '#0f172a',
+      color: '#f9fafb',
+    },
     
     menuItem: (isActive, isFilterBtn = false) => ({
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -348,10 +450,63 @@ function App() {
 
       {/* 3. 메인 콘텐츠 (지도 등) */}
       <main style={styles.mainContent}>
-        {activeTab === 'map' && <div style={{ width: '100%', height: '100%' }}><MapComponent markers={filteredMarkers} /></div>}
+        {activeTab === 'map' && (
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={styles.noticeBar}>
+              <div style={styles.noticeLeft}>
+                <span style={styles.noticeEmoji}>📢</span>
+                <div style={styles.noticeText}>
+                  {COUPON_NOTICE_TEXT}
+                </div>
+              </div>
+              <button
+                type="button"
+                style={styles.couponButton}
+                onClick={() => setIsCouponOpen(true)}
+              >
+                쿠폰 보기
+              </button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+              <MapComponent markers={filteredMarkers} />
+              <div
+                style={styles.couponPanelWrapper}
+                onClick={() => setIsCouponOpen(false)}
+              >
+                {isCouponOpen && (
+                  <div
+                    style={styles.couponPanel}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={styles.couponTitle}>{COUPON_INFO.title}</div>
+                    {COUPON_INFO.codes && COUPON_INFO.codes.length > 0 && (
+                      <div style={styles.couponCodesWrapper}>
+                        {COUPON_INFO.codes.map((code) => (
+                          <div key={code} style={styles.couponCodeBox}>
+                            {code}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={styles.couponSmall}>
+                      {COUPON_INFO.description}
+                    </div>
+                    <button
+                      type="button"
+                      style={styles.couponCloseBtn}
+                      onClick={() => setIsCouponOpen(false)}
+                    >
+                      닫기
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         {activeTab === 'home' && <Placeholder text="🏠 집 공유페이지 개발중" />}
         {activeTab === 'friends' && <Placeholder text="👥 친구 찾기페이지 개발중" />}
-        //{activeTab === 'friends' && <FriendsPage isDarkMode={isDarkMode} />}
+        {/* {activeTab === 'friends' && <FriendsPage isDarkMode={isDarkMode} />} */}
         {activeTab === 'settings' && (
           <SettingsPage 
             isDarkMode={isDarkMode} 
