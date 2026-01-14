@@ -4,7 +4,7 @@ import MapComponent from './components/MapComponent';
 import { Category, DUDU_DATA } from './data'; 
 import SettingsPage from './settings/SettingsPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { Analytics } from "@vercel/analytics/next";
+import { Analytics } from "@vercel/analytics/react";
 
 
 function App() {
