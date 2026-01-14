@@ -295,21 +295,21 @@ export const DUDU_DATA = [
   { id: 227, group: '밥그릇', category: 'formosandeer', position: [487+45, 770+20]}, 
   
   //스페셜
-  { id: 228, group: '스페셜', category: 'specialtree', position: [320+55, 610+20]}, //12
+  // { id: 228, group: '스페셜', category: 'specialtree', position: [320+55, 610+20]}, //12
   // { id: 229, group: '스페셜', category: 'specialtree', position: [400+50, 630+20]}, //11
   // { id: 230, group: '스페셜', category: 'specialtree', position: [480+50, 640+20]}, //10
   // { id: 231, group: '스페셜', category: 'specialtree', position: [550+45, 640+20]}, //9
-  // { id: 232, group: '스페셜', category: 'specialtree', position: [600+35, 580+20]}, //8
+  { id: 232, group: '스페셜', category: 'specialtree', position: [600+35, 580+20]}, //8
   // { id: 233, group: '스페셜', category: 'specialtree', position: [600+35, 510+20]}, //7
   // { id: 234, group: '스페셜', category: 'specialtree', position: [630+35, 430+20]}, //6
-  // { id: 235, group: '스페셜', category: 'specialtree', position: [635+35, 370+20]}, //5
+  { id: 235, group: '스페셜', category: 'specialrock', position: [635+35, 370+20]}, //5
   // { id: 236, group: '스페셜', category: 'specialtree', position: [540+35, 305+10]}, //4
   // { id: 237, group: '스페셜', category: 'specialtree', position: [460+35, 315+10]}, //3
   // { id: 238, group: '스페셜', category: 'specialrock', position: [390+35, 320+15]}, //2
   // { id: 239, group: '스페셜', category: 'specialtree', position: [320+55, 350+15]}, //1
 
 
-  { id: 229, group: '스페셜', category: 'specialrock', position: [760+35, 315+10]}, //온천산
+  // { id: 229, group: '스페셜', category: 'specialrock', position: [760+35, 315+10]}, //온천산
   // { id: 1241, group: '스페셜', category: 'specialtree', position: [420+50, 780+20]}, //영혼의 숲
 
 

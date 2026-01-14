@@ -1,13 +1,15 @@
-import React, { useState, useMemo } from 'react';
-import { storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import React, { useState, useEffect, useCallback } from 'react';
+import { storage, db } from '../firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as dbRef, onValue, set } from 'firebase/database';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 const initialPostState = {
   name: '',
   uid: '',
-  photo: '',
   title: '',
   content: '',
+  photo: '',
 };
 
 const createEmptyComment = () => ({
@@ -19,21 +21,57 @@ const createEmptyComment = () => ({
 
 const FriendsPage = ({ isDarkMode }) => {
   const [posts, setPosts] = useState([]);
-  const [editingPostId, setEditingPostId] = useState(null);
   const [form, setForm] = useState(initialPostState);
-  const [selectedPostId, setSelectedPostId] = useState(null);
+  const [showComments, setShowComments] = useState({});
   const [commentDrafts, setCommentDrafts] = useState({});
-  const [replyDrafts, setReplyDrafts] = useState({});
   const [profileFile, setProfileFile] = useState(null);
   const [profilePreview, setProfilePreview] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [likedPostIds, setLikedPostIds] = useLocalStorage(
+    'friends-liked-posts',
+    []
+  );
 
-  const isEditing = useMemo(() => editingPostId !== null, [editingPostId]);
+  // Realtime Database에 현재 posts 배열을 저장하는 헬퍼
+  const savePostsToDB = useCallback(
+    (nextPosts) => {
+      try {
+        const postsRef = dbRef(db, 'friends/posts');
+        const byId = {};
+        nextPosts.forEach((p) => {
+          if (p?.id) {
+            byId[p.id] = p;
+          }
+        });
+        set(postsRef, byId);
+      } catch (err) {
+        console.error('Failed to save posts to Realtime DB', err);
+      }
+    },
+    []
+  );
+
+  // 마운트 시 한 번, Realtime DB에서 기존 글 목록 불러오기
+  useEffect(() => {
+    const postsRef = dbRef(db, 'friends/posts');
+    const unsubscribe = onValue(postsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        setPosts([]);
+        return;
+      }
+      const loaded = Object.values(data).sort(
+        (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')
+      );
+      setPosts(loaded);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const resetForm = () => {
     setForm(initialPostState);
-    setEditingPostId(null);
     setProfileFile(null);
     setProfilePreview('');
   };
@@ -60,57 +98,36 @@ const FriendsPage = ({ isDarkMode }) => {
       try {
         setIsUploading(true);
         const ext = profileFile.name.split('.').pop() || 'jpg';
-        const fileRef = ref(
+        const fileRef = storageRef(
           storage,
-          `friends/profile/${trimmed.uid}_${Date.now()}.${ext}`
+          `friends/images/${trimmed.uid || 'anon'}_${Date.now()}.${ext}`
         );
         const snapshot = await uploadBytes(fileRef, profileFile);
         photoUrl = await getDownloadURL(snapshot.ref);
       } catch (err) {
         console.error(err);
-        alert('프로필 이미지를 업로드하는 중 문제가 발생했습니다.');
+        alert('이미지를 업로드하는 중 문제가 발생했습니다.');
       } finally {
         setIsUploading(false);
       }
     }
 
-    if (isEditing) {
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === editingPostId
-            ? { ...p, ...trimmed, photo: photoUrl }
-            : p
-        )
-      );
-    } else {
-      const newPost = {
-        id: Date.now().toString() + Math.random().toString(36).slice(2),
-        ...trimmed,
-        photo: photoUrl,
-        createdAt: new Date().toISOString(),
-        views: 0,
-        likes: 0,
-        comments: [],
-      };
-      setPosts((prev) => [newPost, ...prev]);
-    }
+    const newPost = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      ...trimmed,
+      photo: photoUrl,
+      createdAt: new Date().toISOString(),
+      views: 0,
+      likes: 0,
+      comments: [],
+    };
+    setPosts((prev) => {
+      const updated = [newPost, ...prev];
+      savePostsToDB(updated);
+      return updated;
+    });
 
     resetForm();
-  };
-
-  const handleEdit = (post) => {
-    setEditingPostId(post.id);
-    setForm({
-      name: post.name,
-      uid: post.uid,
-      photo: post.photo || '',
-      title: post.title,
-      content: post.content,
-    });
-    setSelectedPostId(post.id);
-    setProfileFile(null);
-    setProfilePreview(post.photo || '');
-    setIsFormOpen(true);
   };
 
   const handleProfileFileChange = (e) => {
@@ -130,38 +147,31 @@ const FriendsPage = ({ isDarkMode }) => {
     setProfilePreview(previewUrl);
   };
 
-  const handleDelete = (postId) => {
-    if (!window.confirm('이 글을 삭제할까요?')) return;
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
-    if (selectedPostId === postId) setSelectedPostId(null);
-    if (editingPostId === postId) resetForm();
-  };
-
-  const handleToggleDetail = (postId) => {
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId && selectedPostId !== postId
-          ? { ...p, views: p.views + 1 }
-          : p
-      )
-    );
-    setSelectedPostId((prev) => (prev === postId ? null : postId));
+  const handleToggleComments = (postId) => {
+    setShowComments((prev) => ({
+      ...prev,
+      [postId]: !prev[postId],
+    }));
   };
 
   const handleLike = (postId) => {
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId ? { ...p, likes: p.likes + 1 } : p
-      )
-    );
+    // 이미 이 기기에서 좋아요 한 글이면 무시
+    if (likedPostIds.includes(postId)) return;
+
+    setPosts((prev) => {
+      const updated = prev.map((p) =>
+        p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p
+      );
+      savePostsToDB(updated);
+      return updated;
+    });
+
+    // 로컬 스토리지에 이 기기에서 좋아요한 글 ID 기록
+    setLikedPostIds((prev) => [...prev, postId]);
   };
 
   const handleCommentChange = (postId, value) => {
     setCommentDrafts((prev) => ({ ...prev, [postId]: value }));
-  };
-
-  const handleReplyChange = (commentId, value) => {
-    setReplyDrafts((prev) => ({ ...prev, [commentId]: value }));
   };
 
   const addComment = (postId) => {
@@ -174,76 +184,19 @@ const FriendsPage = ({ isDarkMode }) => {
       author: '익명',
     };
 
-    setPosts((prev) =>
-      prev.map((p) =>
+    setPosts((prev) => {
+      const updated = prev.map((p) =>
         p.id === postId
-          ? { ...p, comments: [...p.comments, newComment] }
+          ? { ...p, comments: [...(p.comments || []), newComment] }
           : p
-      )
-    );
+      );
+      savePostsToDB(updated);
+      return updated;
+    });
     setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
   };
 
-  const addReply = (postId, commentId) => {
-    const text = (replyDrafts[commentId] || '').trim();
-    if (!text) return;
-
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== postId) return p;
-        return {
-          ...p,
-          comments: p.comments.map((c) =>
-            c.id === commentId
-              ? {
-                  ...c,
-                  replies: [
-                    ...c.replies,
-                    {
-                      ...createEmptyComment(),
-                      text,
-                      author: '익명',
-                    },
-                  ],
-                }
-              : c
-          ),
-        };
-      })
-    );
-    setReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
-  };
-
-  const deleteCommentOrReply = (postId, commentId, replyId) => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== postId) return p;
-        if (!replyId) {
-          return {
-            ...p,
-            comments: p.comments.filter((c) => c.id !== commentId),
-          };
-        }
-        return {
-          ...p,
-          comments: p.comments.map((c) =>
-            c.id === commentId
-              ? {
-                  ...c,
-                  replies: c.replies.filter((r) => r.id !== replyId),
-                }
-              : c
-          ),
-        };
-      })
-    );
-  };
-
-  const countAllComments = (comments) =>
-    comments.reduce(
-      (sum, c) => sum + 1 + (c.replies ? c.replies.length : 0),
-      0
-    );
+  const countAllComments = (comments = []) => comments.length;
 
   const styles = {
     page: {
@@ -352,31 +305,9 @@ const FriendsPage = ({ isDarkMode }) => {
     },
     postUser: {
       display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
+      flexDirection: 'column',
+      gap: '2px',
       minWidth: 0,
-    },
-    avatar: {
-      width: '32px',
-      height: '32px',
-      borderRadius: '999px',
-      objectFit: 'cover',
-      backgroundColor: '#0f172a',
-      flexShrink: 0,
-    },
-    avatarPlaceholder: {
-      width: '32px',
-      height: '32px',
-      borderRadius: '999px',
-      background:
-        'radial-gradient(circle at 0% 0%, #22c55e, #3b82f6)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '14px',
-      fontWeight: 'bold',
-      color: '#f9fafb',
-      flexShrink: 0,
     },
     userText: {
       display: 'flex',
@@ -429,26 +360,12 @@ const FriendsPage = ({ isDarkMode }) => {
       marginBottom: '4px',
       marginTop: '2px',
     },
-    title: {
+    titleText: {
       fontSize: '14px',
       fontWeight: 700,
-      cursor: 'pointer',
       color: isDarkMode ? '#e5e7eb' : '#0f172a',
     },
-    actions: {
-      display: 'flex',
-      gap: '4px',
-      flexShrink: 0,
-    },
-    smallBtn: {
-      fontSize: '11px',
-      padding: '2px 6px',
-      borderRadius: '999px',
-      border: 'none',
-      cursor: 'pointer',
-      backgroundColor: '#0f172a',
-      color: '#e5e7eb',
-    },
+    actions: {},
     likeBtn: {
       fontSize: '11px',
       padding: '2px 6px',
@@ -464,6 +381,24 @@ const FriendsPage = ({ isDarkMode }) => {
       lineHeight: 1.5,
       whiteSpace: 'pre-wrap',
       marginBottom: '6px',
+    },
+    imageWrapper: {
+      marginTop: '6px',
+      marginBottom: '4px',
+      borderRadius: '10px',
+      overflow: 'hidden',
+      maxHeight: '200px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDarkMode ? '#020617' : '#f1f5f9',
+    },
+    postImage: {
+      width: '100%',
+      height: 'auto',
+      maxHeight: '200px',
+      objectFit: 'contain',
+      display: 'block',
     },
     commentsSection: {
       marginTop: '6px',
@@ -580,7 +515,7 @@ const FriendsPage = ({ isDarkMode }) => {
       </div>
 
       {isFormOpen && (
-        <form style={styles.form} onSubmit={handleSubmit}>
+        <div style={styles.form}>
           <div style={styles.formRow}>
             <input
               style={styles.input}
@@ -621,7 +556,7 @@ const FriendsPage = ({ isDarkMode }) => {
               style={{ width: '100%', fontSize: '11px' }}
             />
             <div style={styles.uploadHint}>
-              폰/PC에서 이미지 선택 시 자동으로 업로드됩니다.
+              폰/PC에서 이미지를 선택하면 함께 업로드됩니다. (선택 안 해도 글은 등록돼요)
             </div>
             {profilePreview && (
               <div
@@ -632,34 +567,35 @@ const FriendsPage = ({ isDarkMode }) => {
                   gap: '8px',
                 }}
               >
-                <span style={{ fontSize: '11px' }}>프로필 미리보기</span>
+                <span style={{ fontSize: '11px' }}>이미지 미리보기</span>
                 <img
                   src={profilePreview}
-                  alt="프로필 미리보기"
+                  alt="이미지 미리보기"
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
+                    width: 60,
+                    height: 60,
+                    borderRadius: '8px',
                     objectFit: 'cover',
                   }}
                 />
               </div>
             )}
           </div>
-          <button type="submit" style={styles.submitBtn} disabled={isUploading}>
-            {isUploading
-              ? '이미지 업로드 중...'
-              : isEditing
-              ? '글 수정하기'
-              : '글 올리기'}
+          <button 
+            type="button"
+            onClick={handleSubmit}
+            style={styles.submitBtn} 
+            disabled={isUploading}
+          >
+            {isUploading ? '이미지 업로드 중...' : '글 올리기'}
           </button>
-        </form>
+        </div>
       )}
 
       <div style={styles.listWrapper}>
         {posts.map((post) => {
           const totalComments = countAllComments(post.comments);
-          const isSelected = selectedPostId === post.id;
+          const isCommentsOpen = showComments[post.id] || false;
           const created =
             post.createdAt &&
             new Date(post.createdAt).toLocaleString('ko-KR', {
@@ -673,24 +609,8 @@ const FriendsPage = ({ isDarkMode }) => {
             <div key={post.id} style={styles.postCard}>
               <div style={styles.postHeader}>
                 <div style={styles.postUser}>
-                  {post.photo ? (
-                    <img
-                      src={post.photo}
-                      alt={post.name}
-                      style={styles.avatar}
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div style={styles.avatarPlaceholder}>
-                      {post.name?.[0] || '?'}
-                    </div>
-                  )}
-                  <div style={styles.userText}>
-                    <span style={styles.name}>{post.name}</span>
-                    <span style={styles.uid}>{post.uid}</span>
-                  </div>
+                  <span style={styles.name}>{post.name}</span>
+                  <span style={styles.uid}>{post.uid}</span>
                 </div>
                 <div style={styles.postMeta}>
                   {created && <span style={styles.badge}>{created}</span>}
@@ -705,145 +625,112 @@ const FriendsPage = ({ isDarkMode }) => {
               </div>
 
               <div style={styles.titleRow}>
-                <div
-                  style={styles.title}
-                  onClick={() => handleToggleDetail(post.id)}
-                >
+                <div style={styles.titleText}>
                   {post.title}
                 </div>
-                <div style={styles.actions}>
-                  <button
-                    type="button"
-                    style={styles.likeBtn}
-                    onClick={() => handleLike(post.id)}
-                  >
-                    👍 좋아요
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.smallBtn}
-                    onClick={() => handleEdit(post)}
-                  >
-                    수정
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.smallBtn}
-                    onClick={() => handleDelete(post.id)}
-                  >
-                    삭제
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  style={styles.likeBtn}
+                  onClick={() => handleLike(post.id)}
+                >
+                  👍 좋아요
+                </button>
               </div>
 
-              {isSelected && (
-                <>
-                  <div style={styles.content}>{post.content}</div>
-                  <div style={styles.commentsSection}>
-                    <div style={styles.commentInputRow}>
-                      <input
-                        style={styles.commentInput}
-                        placeholder="댓글을 입력하세요"
-                        value={commentDrafts[post.id] || ''}
-                        onChange={(e) =>
-                          handleCommentChange(post.id, e.target.value)
-                        }
-                      />
-                      <button
-                        type="button"
-                        style={styles.commentBtn}
-                        onClick={() => addComment(post.id)}
-                      >
-                        등록
-                      </button>
-                    </div>
+              <div style={styles.content}>{post.content}</div>
+              
+              {post.photo && (
+                <div style={styles.imageWrapper}>
+                  <img
+                    src={post.photo}
+                    alt={post.title}
+                    style={styles.postImage}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
 
-                    <div style={styles.commentList}>
-                      {post.comments.map((c) => (
-                        <div key={c.id} style={styles.comment}>
-                          <div style={styles.commentHeader}>
-                            <span style={styles.commentAuthor}>
-                              {c.author || '익명'}
-                            </span>
-                            <div style={styles.commentActions}>
-                              <button
-                                type="button"
-                                style={{
-                                  ...styles.smallBtn,
-                                  padding: '0 6px',
-                                }}
-                                onClick={() =>
-                                  deleteCommentOrReply(
-                                    post.id,
-                                    c.id,
-                                    null
-                                  )
-                                }
-                              >
-                                삭제
-                              </button>
-                            </div>
-                          </div>
-                          <div>{c.text}</div>
-
-                          <div style={styles.replyList}>
-                            {c.replies?.map((r) => (
-                              <div key={r.id} style={styles.comment}>
-                                <div style={styles.commentHeader}>
-                                  <span style={styles.commentAuthor}>
-                                    {r.author || '익명'}
-                                  </span>
-                                  <div style={styles.commentActions}>
-                                    <button
-                                      type="button"
-                                      style={{
-                                        ...styles.smallBtn,
-                                        padding: '0 6px',
-                                      }}
-                                      onClick={() =>
-                                        deleteCommentOrReply(
-                                          post.id,
-                                          c.id,
-                                          r.id
-                                        )
-                                      }
-                                    >
-                                      삭제
-                                    </button>
-                                  </div>
-                                </div>
-                                <div>{r.text}</div>
-                              </div>
-                            ))}
-
-                            <div style={styles.replyInputRow}>
-                              <input
-                                style={styles.replyInput}
-                                placeholder="대댓글 입력"
-                                value={replyDrafts[c.id] || ''}
-                                onChange={(e) =>
-                                  handleReplyChange(
-                                    c.id,
-                                    e.target.value
-                                  )
-                                }
-                              />
-                              <button
-                                type="button"
-                                style={styles.replyBtn}
-                                onClick={() =>
-                                  addReply(post.id, c.id)
-                                }
-                              >
-                                답글
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              {!isCommentsOpen ? (
+                <div style={{ marginTop: '8px', textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleComments(post.id)}
+                    style={{
+                      fontSize: '11px',
+                      padding: '4px 12px',
+                      borderRadius: '999px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0',
+                      color: isDarkMode ? '#e5e7eb' : '#0f172a',
+                      fontWeight: 600,
+                    }}
+                  >
+                    댓글 보기 ({totalComments})
+                  </button>
+                </div>
+              ) : (
+                <div style={styles.commentsSection}>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    marginBottom: '6px'
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600 }}>
+                      댓글 {totalComments}개
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComments(post.id)}
+                      style={{
+                        fontSize: '11px',
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0',
+                        color: isDarkMode ? '#e5e7eb' : '#0f172a',
+                        fontWeight: 600,
+                      }}
+                    >
+                      숨기기
+                    </button>
                   </div>
-                </>
+
+                  <div style={styles.commentList}>
+                    {post.comments.map((c) => (
+                      <div key={c.id} style={styles.comment}>
+                        <div style={styles.commentHeader}>
+                          <span style={styles.commentAuthor}>
+                            {c.author || '익명'}
+                          </span>
+                        </div>
+                        <div>{c.text}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={styles.commentInputRow}>
+                    <input
+                      style={styles.commentInput}
+                      placeholder="댓글을 입력하세요"
+                      value={commentDrafts[post.id] || ''}
+                      onChange={(e) =>
+                        handleCommentChange(post.id, e.target.value)
+                      }
+                    />
+                    <button
+                      type="button"
+                      style={styles.commentBtn}
+                      onClick={() => addComment(post.id)}
+                    >
+                      등록
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           );
@@ -866,4 +753,3 @@ const FriendsPage = ({ isDarkMode }) => {
 };
 
 export default FriendsPage;
-
