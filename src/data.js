@@ -31,9 +31,9 @@ export const Category = {
   '희귀' : [
     { id: 'bigtree', label: '희귀목재', image: '/icons/bigtree.png' },
   ],
-  '핑크버블' : [
-    { id: 'pinkbubble', label: '핑크버블', image: 'bg-pink-300' },
-    { id: 'bubble', label: '일반버블', image: 'bg-blue-300' }
+  '버블' : [
+    { id: 'pinkbubble', label: '핑크버블', image: '/icons/pinkbubble.png' },
+    { id: 'bubble', label: '일반버블', image: '/icons/bubble.png' }
   ],
 };
 
@@ -294,7 +294,7 @@ export const DUDU_DATA = [
   { id: 227, group: '밥그릇', category: 'formosandeer', position: [487, 770]}, 
   
   //스페셜
-  { id: 1228, group: '스페셜', category: 'specialtree', position: [330, 610]}, //12
+  { id: 228, group: '스페셜', category: 'specialtree', position: [330, 610]}, //12
   // { id: 1229, group: '스페셜', category: 'specialtree', position: [400, 630]}, //11
   // { id: 1230, group: '스페셜', category: 'specialtree', position: [480, 640]}, //10
   // { id: 1231, group: '스페셜', category: 'specialtree', position: [550, 640]}, //9
@@ -308,7 +308,7 @@ export const DUDU_DATA = [
   // { id: 1239, group: '스페셜', category: 'specialtree', position: [320, 350]}, //1
 
 
-  { id: 1240, group: '스페셜', category: 'specialrock', position: [760, 315]}, //온천산
+  { id: 229, group: '스페셜', category: 'specialrock', position: [760, 315]}, //온천산
   // { id: 1241, group: '스페셜', category: 'specialtree', position: [420, 780]}, //영혼의 숲
 
 
@@ -322,6 +322,17 @@ export const DUDU_DATA = [
   { id: 231, group: '희귀', category: 'bigtree', position: [315, 365]}, 
   { id: 231, group: '희귀', category: 'bigtree', position: [340, 400]}, 
 
+//버블
+{ id: 232, group: '버블', category: 'bubble', position: [570, 335]}, 
+{ id: 233, group: '버블', category: 'bubble', position: [785, 485]}, 
+{ id: 234, group: '버블', category: 'bubble', position: [690, 585]}, 
+{ id: 235, group: '버블', category: 'bubble', position: [430, 485]}, 
+{ id: 236, group: '버블', category: 'bubble', position: [409, 552]}, 
+{ id: 237, group: '버블', category: 'bubble', position: [190, 437]}, 
+{ id: 238, group: '버블', category: 'bubble', position: [235, 770]}, 
+{ id: 239, group: '버블', category: 'bubble', position: [560, 755]}, 
+{ id: 240, group: '버블', category: 'bubble', position: [140, 123]}, 
+{ id: 241, group: '버블', category: 'bubble', position: [290, 218]}, 
 
 
 ];
