@@ -4,17 +4,35 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Category } from '../data';
 
-// 맵 크기 설정
 const bounds = [[0, 0], [1000, 1000]];
-const BASE_PATH = "/dudutaMap_renewer";
+
+// 🚨 [중요] 본인의 레포지토리 이름 정확히 입력 (/문자열)
+const BASE_PATH = "/dudutaMap_renewer"; 
 
 const MapComponent = ({ markers = [] }) => {
 
   const getIconUrl = (itemId) => {
     for (const group of Object.values(Category)) {
       const item = group.find(i => i.id === itemId);
-      if (item && item.image && item.image.includes('/')) {
-        return item.image;
+      
+      if (item && item.image) {
+        // 1. 데이터(data.js)에 적힌 이미지 경로 가져오기
+        let rawPath = item.image;
+
+        // 2. 만약 경로 앞에 '/'가 있다면 제거 (중복 방지)
+        // 예: "/icons/panda.png" -> "icons/panda.png"
+        if (rawPath.startsWith('/')) {
+          rawPath = rawPath.slice(1);
+        }
+
+        // 3. BASE_PATH와 합치기
+        // 결과: "/dudutaMap_renewer/icons/panda.png"
+        const finalPath = `${BASE_PATH}/${rawPath}`;
+        
+        // 🚨 [디버깅] F12 -> Console 탭에서 이 주소가 맞는지 확인해보세요!
+        // console.log(`아이콘 로딩 시도: ${finalPath}`);
+        
+        return finalPath;
       }
     }
     return null;
@@ -23,25 +41,28 @@ const MapComponent = ({ markers = [] }) => {
   const createCustomIcon = (iconUrl) => {
     return new L.Icon({
       iconUrl: iconUrl,
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
-      popupAnchor: [0, -15]
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+      popupAnchor: [0, -16],
+      className: 'custom-marker-icon'
     });
   };
 
   return (
     <MapContainer
       crs={L.CRS.Simple}
-      bounds={bounds}
       center={[500, 500]}
-      zoom={0}
-      minZoom={-2} // 축소 허용
-      style={{ height: '100%', width: '100%', background: '#cccccc' }}
-      maxBounds={bounds}
-      maxBoundsViscosity={1.0}    
+      zoom={-1}
+      minZoom={-3}
+      maxZoom={3}
+      maxBounds={[[-2000, -2000], [3000, 3000]]}
+      maxBoundsViscosity={0}
+      style={{ height: '100%', width: '100%', background: '#aad3df' }}
       zoomControl={false}
+      attributionControl={false}
     >
-      <ImageOverlay url="/duduMap.png" bounds={bounds} />
+      {/* 지도 이미지도 BASE_PATH 적용 */}
+      <ImageOverlay url={`${BASE_PATH}/duduMap.png`} bounds={bounds} />
 
       {markers.map((marker, index) => {
         const iconUrl = getIconUrl(marker.category);
@@ -50,8 +71,6 @@ const MapComponent = ({ markers = [] }) => {
         return (
           <Marker 
             key={index} 
-            // 🚨 [수정 완료] GameMap.tsx 원본 로직 적용
-            // 순서를 바꾸거나([1], [0]) 계산하지 않고, 데이터 그대로 넣습니다.
             position={marker.position} 
             icon={markerIcon}
           />
