@@ -103,7 +103,9 @@ function App() {
     filterPanelWrapper: {
       position: 'absolute', 
       zIndex: 20, 
-      backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+      backgroundColor: isDarkMode 
+        ? 'rgba(0, 0, 0, 0.96)'      // slate-900 계열
+        : 'rgba(255, 255, 255, 0.95)',
       backdropFilter: 'blur(5px)',
       overflow: 'hidden', 
       display: 'flex', flexDirection: 'column',
@@ -125,8 +127,12 @@ function App() {
         top: 0,
         height: '100%',
         width: (isFilterOpen && activeTab === 'map') ? '280px' : '0px',
-        borderRight: (isFilterOpen && activeTab === 'map') ? '1px solid #dee2e6' : 'none',
-        boxShadow: (isFilterOpen && activeTab === 'map') ? '5px 0 15px rgba(0,0,0,0.1)' : 'none',
+        borderRight: (isFilterOpen && activeTab === 'map')
+          ? (isDarkMode ? '1px solid #1f2933' : '1px solid #dee2e6')
+          : 'none',
+        boxShadow: (isFilterOpen && activeTab === 'map')
+          ? (isDarkMode ? '5px 0 20px rgba(0,0,0,0.45)' : '5px 0 15px rgba(0,0,0,0.1)')
+          : 'none',
       })
     },
 
@@ -136,16 +142,19 @@ function App() {
       display: 'flex', flexDirection: 'column' 
     },
     
-    // ... 나머지 내부 스타일은 동일 ...
+    // ... 나머지 내부 스타일 (다크모드 반영) ...
     filterHeader: {
-      padding: '20px', borderBottom: '1px solid #eee',
+      padding: '20px',
+      borderBottom: isDarkMode ? '1px solid #1f2937' : '1px solid #eee',
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      backgroundColor: 'transparent', position: 'sticky', top: 0, zIndex: 10
+      backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.96)' : 'transparent',
+      position: 'sticky', top: 0, zIndex: 10
     },
-    categoryGroup: { borderBottom: '1px solid #f0f0f0' },
+    categoryGroup: { borderBottom: isDarkMode ? '1px solid #111827' : '1px solid #f0f0f0' },
     categoryHeader: {
       padding: '12px 15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between',
-      alignItems: 'center', fontWeight: 'bold', fontSize: '14px', backgroundColor: 'transparent',
+      alignItems: 'center', fontWeight: 'bold', fontSize: '14px',
+      backgroundColor: 'transparent',
       userSelect: 'none', transition: 'background 0.2s'
     },
     accordionWrapper: (isOpen) => ({
@@ -154,23 +163,43 @@ function App() {
     accordionInner: { overflow: 'hidden', minHeight: '0' },
     catBtn: (isActive) => ({
       fontSize: '11px', padding: '4px 10px', borderRadius: '12px', border: 'none', cursor: 'pointer',
-      backgroundColor: isActive ? '#fee2e2' : '#eff6ff', color: isActive ? '#dc2626' : '#2563eb',
+      backgroundColor: isDarkMode
+        ? (isActive ? 'rgba(254, 202, 202, 0.12)' : 'rgba(191, 219, 254, 0.12)')
+        : (isActive ? '#fee2e2' : '#eff6ff'),
+      color: isDarkMode
+        ? (isActive ? '#fca5a5' : '#bfdbfe')
+        : (isActive ? '#dc2626' : '#2563eb'),
       fontWeight: 'bold', marginLeft: 'auto', marginRight: '10px', transition: 'all 0.2s ease'
     }),
     globalBtn: (isActive) => ({
       fontSize: '12px', padding: '6px 12px', border: 'none', borderRadius: '6px', cursor: 'pointer',
-      backgroundColor: isActive ? '#ef4444' : '#3b82f6', color: 'white', fontWeight: 'bold', 
-      transition: 'background-color 0.3s ease, transform 0.1s', boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      backgroundColor: isActive
+        ? (isDarkMode ? '#b91c1c' : '#ef4444')
+        : (isDarkMode ? '#1d4ed8' : '#3b82f6'),
+      color: '#f9fafb',
+      fontWeight: 'bold', 
+      transition: 'background-color 0.3s ease, transform 0.1s',
+      boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.6)' : '0 2px 4px rgba(0,0,0,0.1)'
     }),
-    itemList: { backgroundColor: 'rgba(252, 252, 252, 0.5)', padding: '5px 0' },
+    itemList: {
+      backgroundColor: isDarkMode
+        ? 'rgba(0, 0, 0, 0.85)'
+        : 'rgba(252, 252, 252, 0.5)',
+      padding: '5px 0'
+    },
     itemRow: {
       display: 'flex', alignItems: 'center', padding: '8px 20px 8px 30px',
-      cursor: 'pointer', fontSize: '13px', color: '#555', transition: 'background-color 0.2s'
+      cursor: 'pointer', fontSize: '13px',
+      color: isDarkMode ? '#e5e7eb' : '#555',
+      transition: 'background-color 0.2s'
     },
     itemImage: { width: '22px', height: '22px', marginRight: '12px', objectFit: 'contain' },
     colorDot: (color) => ({
       width: '18px', height: '18px', borderRadius: '50%', marginRight: '12px',
-      backgroundColor: color === 'pink' ? '#f9a8d4' : '#93c5fd', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+      backgroundColor: color === 'pink' ? '#f9a8d4' : '#93c5fd',
+      boxShadow: isDarkMode
+        ? '0 1px 4px rgba(0,0,0,0.8)'
+        : '0 1px 3px rgba(0,0,0,0.2)'
     }),
 
     // 3. 메인 콘텐츠
@@ -245,7 +274,14 @@ function App() {
       <div style={styles.filterPanelWrapper}>
         <div style={styles.filterContent}>
           <div style={styles.filterHeader}>
-            <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: '#1e293b' }}>필터 목록</h2>
+            <h2 style={{
+              fontSize: '18px',
+              fontWeight: 'bold',
+              margin: 0,
+              color: isDarkMode ? '#e5e7eb' : '#1e293b'
+            }}>
+              필터 목록
+            </h2>
             <button onClick={toggleGlobalSelection} style={styles.globalBtn(isAnyGlobalSelected)}>
               {isAnyGlobalSelected ? '해제' : '선택'}
             </button>
@@ -258,7 +294,12 @@ function App() {
                 <div key={catName} style={styles.categoryGroup}>
                   <div style={styles.categoryHeader} onClick={() => toggleAccordion(catName)}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontSize: '15px', color: '#334155' }}>{catName}</span>
+                      <span style={{
+                        fontSize: '15px',
+                        color: isDarkMode ? '#e5e7eb' : '#334155'
+                      }}>
+                        {catName}
+                      </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                       <button onClick={(e) => toggleCategorySelection(e, catName)} style={styles.catBtn(isAnyInCatSelected)}>
@@ -284,7 +325,12 @@ function App() {
                             ) : (
                               <div style={styles.colorDot(item.image)}></div>
                             )}
-                            <span style={{ fontWeight: checkedItems[item.id] ? '600' : '400', color: checkedItems[item.id] ? '#1e293b' : '#64748b' }}>
+                            <span style={{
+                              fontWeight: checkedItems[item.id] ? '600' : '400',
+                              color: checkedItems[item.id]
+                                ? (isDarkMode ? '#f3f4f6' : '#1e293b')
+                                : (isDarkMode ? '#9ca3af' : '#64748b')
+                            }}>
                               {item.label}
                             </span>
                           </div>
