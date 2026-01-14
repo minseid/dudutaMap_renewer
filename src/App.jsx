@@ -4,6 +4,7 @@ import MapComponent from './components/MapComponent';
 import { Category, DUDU_DATA } from './data'; 
 import SettingsPage from './settings/SettingsPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { Analytics } from "@vercel/analytics/next";
 
 
 function App() {
@@ -239,7 +240,7 @@ function App() {
           </button>
         ))}
       </nav>
-
+      <Analytics />
       {/* 2. 필터 패널 */}
       <div style={styles.filterPanelWrapper}>
         <div style={styles.filterContent}>
