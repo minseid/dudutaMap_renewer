@@ -6,6 +6,7 @@ import { Category } from '../data';
 
 // 맵 크기 설정
 const bounds = [[0, 0], [1000, 1000]];
+const BASE_PATH = "/dudutaMap_renewer";
 
 const MapComponent = ({ markers = [] }) => {
 
