@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Map, Home, Users, Settings, Filter, ChevronDown, CheckSquare, Square } from 'lucide-react'; 
 import MapComponent from './components/MapComponent';
 import { Category, DUDU_DATA } from './data'; 
+import SettingsPage from './settings/SettingsPage';
+import { useLocalStorage } from './hooks/useLocalStorage';
+
 
 function App() {
   const [activeTab, setActiveTab] = useState('map');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState({});
   const [checkedItems, setCheckedItems] = useState({});
+  const [isDarkMode, setIsDarkMode] = useLocalStorage('setting-darkMode', false);
 
   // ✨ 화면 크기 감지 (모바일 여부 확인)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -65,15 +69,20 @@ function App() {
       width: '100vw', 
       height: '100vh', 
       overflow: 'hidden',
-      margin: 0, padding: 0, fontFamily: 'sans-serif', backgroundColor: '#fff',
+      margin: 0, padding: 0, fontFamily: 'sans-serif',
       position: 'relative',
       // ✨ 모바일이면 세로 배치(역순: 사이드바가 아래로), PC면 가로 배치
       flexDirection: isMobile ? 'column-reverse' : 'row', 
+
+      backgroundColor: isDarkMode ? '#121212' : '#fff',
+
+      color: isDarkMode ? '#ffffff' : '#000000',
     },
 
     // 1. 사이드바 (내비게이션)
     sidebar: {
-      backgroundColor: '#f8f9fa',
+      backgroundColor: isDarkMode ? '#1e1e1e' : '#f8f9fa',
+      borderRight: isDarkMode ? '1px solid #333' : '1px solid #dee2e6',
       display: 'flex', 
       alignItems: 'center', 
       zIndex: 30, // 필터보다 위에 있어야 함
@@ -83,7 +92,6 @@ function App() {
       width: isMobile ? '100%' : '80px',
       height: isMobile ? '70px' : '100%',
       flexDirection: isMobile ? 'row' : 'column', // 모바일은 가로 배열
-      borderRight: isMobile ? 'none' : '1px solid #dee2e6',
       borderTop: isMobile ? '1px solid #dee2e6' : 'none',
       justifyContent: isMobile ? 'space-around' : 'flex-start', // 모바일은 균등 배치
       paddingTop: isMobile ? '0' : '20px',
@@ -170,9 +178,9 @@ function App() {
       width: '100%',
       height: '100%', 
       position: 'relative', 
-      backgroundColor: '#ffffff', 
       zIndex: 1,
-      overflow: 'hidden' 
+      overflow: 'hidden' ,
+      backgroundColor: isDarkMode ? '#121212' : '#ffffff',
     },
     
     menuItem: (isActive, isFilterBtn = false) => ({
@@ -295,8 +303,13 @@ function App() {
         {activeTab === 'map' && <div style={{ width: '100%', height: '100%' }}><MapComponent markers={filteredMarkers} /></div>}
         {activeTab === 'home' && <Placeholder text="🏠 집 공유페이지 개발중" />}
         {activeTab === 'friends' && <Placeholder text="👥 친구 찾기페이지 개발중" />}
-        {activeTab === 'settings' && <Placeholder text="⚙️ 설정 개발중" />}
-      </main>
+        {activeTab === 'settings' && (
+          <SettingsPage 
+            isDarkMode={isDarkMode} 
+            setIsDarkMode={setIsDarkMode} 
+          />
+        )}     
+        </main>
     </div>
   );
 }
