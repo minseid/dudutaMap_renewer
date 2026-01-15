@@ -1,755 +1,552 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { storage, db } from '../firebase';
+import React, { useState, useEffect } from 'react';
+import { db, storage } from '../firebase';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { ref as dbRef, onValue, set } from 'firebase/database';
-import { useLocalStorage } from '../hooks/useLocalStorage';
+import { ref, onValue, set, push, runTransaction, remove } from 'firebase/database';
 
-const initialPostState = {
-  name: '',
-  uid: '',
-  title: '',
-  content: '',
-  photo: '',
-};
+const CATEGORIES = ['친구찾아요', '바다낚시', '곤충유인', '꽥꽥이 점핑', '버블머신'];
+const VILLAGE_CATEGORIES = ['바다낚시', '곤충유인', '꽥꽥이 점핑', '버블머신'];
 
-const createEmptyComment = () => ({
-  id: Date.now().toString() + Math.random().toString(36).slice(2),
-  author: '',
-  text: '',
-  replies: [],
-});
-
-const FriendsPage = ({ isDarkMode }) => {
+const BoardPage = ({ isDarkMode }) => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [posts, setPosts] = useState([]);
-  const [form, setForm] = useState(initialPostState);
-  const [showComments, setShowComments] = useState({});
-  const [commentDrafts, setCommentDrafts] = useState({});
-  const [profileFile, setProfileFile] = useState(null);
-  const [profilePreview, setProfilePreview] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [likedPostIds, setLikedPostIds] = useLocalStorage(
-    'friends-liked-posts',
-    []
-  );
+  const [likedPostIds, setLikedPostIds] = useState([]);
+  const [activeFilter, setActiveFilter] = useState('전체');
 
-  // Realtime Database에 현재 posts 배열을 저장하는 헬퍼
-  const savePostsToDB = useCallback(
-    (nextPosts) => {
-      try {
-        const postsRef = dbRef(db, 'friends/posts');
-        const byId = {};
-        nextPosts.forEach((p) => {
-          if (p?.id) {
-            byId[p.id] = p;
-          }
-        });
-        set(postsRef, byId);
-      } catch (err) {
-        console.error('Failed to save posts to Realtime DB', err);
-      }
-    },
-    []
-  );
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
-  // 마운트 시 한 번, Realtime DB에서 기존 글 목록 불러오기
+  const postsPerPage = isMobile ? 6 : 9; 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [myCreatedPostIds, setMyCreatedPostIds] = useState([]);
+
   useEffect(() => {
-    const postsRef = dbRef(db, 'friends/posts');
+    const savedPosts = localStorage.getItem('myCreatedPosts');
+    if (savedPosts) {
+      setMyCreatedPostIds(JSON.parse(savedPosts));
+    }
+  }, []);
+
+  // 폼 데이터 수정 (startMinutes -> startTime)
+  const [formData, setFormData] = useState({
+    name: '',
+    uid: '',
+    villageNumber: '', 
+    password: '',       
+    startTime: '',      // ★ 변경: 구체적인 시작 시간 (예: "14:30")
+    title: '',
+    content: '',
+    category: CATEGORIES[0],
+  });
+
+  const hoverStyles = `
+    .image-card-container { position: relative; overflow: hidden; height: 300px; }
+    .image-card-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: filter 0.3s ease; z-index: 0; }
+    .image-card-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; opacity: 0; background-color: rgba(0, 0, 0, 0.6); transition: all 0.3s ease; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; color: white; backdrop-filter: blur(0px); }
+    .image-card-container:hover .image-card-bg { filter: blur(4px) brightness(0.8); }
+    .image-card-container:hover .image-card-overlay { opacity: 1; backdrop-filter: blur(2px); }
+  `;
+
+  useEffect(() => {
+    const postsRef = ref(db, 'board/posts');
     const unsubscribe = onValue(postsRef, (snapshot) => {
       const data = snapshot.val();
-      if (!data) {
-        setPosts([]);
-        return;
-      }
-      const loaded = Object.values(data).sort(
-        (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')
-      );
-      setPosts(loaded);
-    });
+      if (!data) { setPosts([]); return; }
+      
+      const now = new Date();
+      const loadedPosts = [];
 
+      // ★ 데이터 순회하면서 만료된 글 삭제 & 유효한 글만 배열에 담기
+      Object.entries(data).forEach(([key, value]) => {
+        let isExpired = false;
+
+        // 모임 시간(scheduledTime)이 있는 경우 만료 체크
+        if (value.scheduledTime) {
+          const scheduledDate = new Date(value.scheduledTime);
+          // 만료 시간 = 시작 시간 + 30분 (30 * 60 * 1000 밀리초)
+          const expirationDate = new Date(scheduledDate.getTime() + 30 * 60000);
+
+          // 현재 시간이 만료 시간보다 지났으면
+          if (now > expirationDate) {
+            isExpired = true;
+            // DB에서 해당 글 삭제 (자동 삭제)
+            remove(ref(db, `board/posts/${key}`)).catch(err => console.error("자동 삭제 실패", err));
+          }
+        }
+
+        // 만료되지 않은 글만 목록에 추가
+        if (!isExpired) {
+          loadedPosts.push({ id: key, ...value });
+        }
+      });
+      
+      // ★ 정렬 로직 (이전과 동일: 임박한 모임 우선)
+      loadedPosts.sort((a, b) => {
+        const timeA = a.scheduledTime ? new Date(a.scheduledTime) : null;
+        const timeB = b.scheduledTime ? new Date(b.scheduledTime) : null;
+        
+        const isFutureA = timeA && timeA > now;
+        const isFutureB = timeB && timeB > now;
+
+        if (isFutureA && isFutureB) return timeA - timeB; 
+        if (isFutureA && !isFutureB) return -1;
+        if (!isFutureA && isFutureB) return 1;
+
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      });
+
+      setPosts(loadedPosts);
+    });
     return () => unsubscribe();
   }, []);
 
-  const resetForm = () => {
-    setForm(initialPostState);
-    setProfileFile(null);
-    setProfilePreview('');
-  };
-
+  useEffect(() => {
+    const savedLikes = localStorage.getItem('myLikedPosts');
+    if (savedLikes) setLikedPostIds(JSON.parse(savedLikes));
+  }, []);
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === 'villageNumber') {
+        const numbersOnly = value.replace(/[^0-9]/g, '');
+        setFormData(prev => ({ ...prev, [name]: numbersOnly }));
+        return;
+      }
+
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const trimmed = Object.fromEntries(
-      Object.entries(form).map(([k, v]) => [k, v.trim()])
-    );
-    if (!trimmed.name || !trimmed.uid || !trimmed.title || !trimmed.content) {
-      alert('이름, UID, 제목, 내용을 모두 입력해 주세요.');
+    
+    const isVillageCategory = VILLAGE_CATEGORIES.includes(formData.category);
+
+    // 유효성 검사 (제목 필수)
+    if (!formData.title) {
+      alert('제목을 입력해주세요!');
       return;
     }
 
-    let photoUrl = form.photo || '';
-
-    // 새 파일이 선택되어 있으면 Storage에 업로드
-    if (profileFile) {
-      try {
-        setIsUploading(true);
-        const ext = profileFile.name.split('.').pop() || 'jpg';
-        const fileRef = storageRef(
-          storage,
-          `friends/images/${trimmed.uid || 'anon'}_${Date.now()}.${ext}`
-        );
-        const snapshot = await uploadBytes(fileRef, profileFile);
-        photoUrl = await getDownloadURL(snapshot.ref);
-      } catch (err) {
-        console.error(err);
-        alert('이미지를 업로드하는 중 문제가 발생했습니다.');
-      } finally {
-        setIsUploading(false);
+    // 일반 글일 때만 닉네임, 내용 필수
+    if (!isVillageCategory) {
+      if (!formData.name || !formData.content) {
+        alert('닉네임과 내용을 입력해주세요!');
+        return;
       }
     }
 
-    const newPost = {
-      id: Date.now().toString() + Math.random().toString(36).slice(2),
-      ...trimmed,
-      photo: photoUrl,
-      createdAt: new Date().toISOString(),
-      views: 0,
-      likes: 0,
-      comments: [],
-    };
-    setPosts((prev) => {
-      const updated = [newPost, ...prev];
-      savePostsToDB(updated);
-      return updated;
-    });
-
-    resetForm();
-  };
-
-  const handleProfileFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // 간단한 이미지 확장자 체크
-    if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 업로드할 수 있습니다.');
+    // 모임 글일 때만 마을 번호 필수
+    if (isVillageCategory && !formData.villageNumber) {
+      alert('마을 번호를 입력해주세요!');
       return;
     }
 
-    setProfileFile(file);
+    if (isUploading) return;
+    setIsUploading(true);
 
-    // 미리보기 URL 생성
-    const previewUrl = URL.createObjectURL(file);
-    setProfilePreview(previewUrl);
+    try {
+      let imageUrl = '';
+      if (!isVillageCategory && imageFile) {
+        const imageRef = storageRef(storage, `board/images/${Date.now()}_${imageFile.name}`);
+        await uploadBytes(imageRef, imageFile);
+        imageUrl = await getDownloadURL(imageRef);
+      }
+
+      let scheduledTime = '';
+      if (formData.startTime) {
+        const [hours, minutes] = formData.startTime.split(':');
+        const now = new Date();
+        const eventDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hours), parseInt(minutes));
+        scheduledTime = eventDate.toISOString();
+      }
+
+      const postsRef = ref(db, 'board/posts');
+      const newPostRef = push(postsRef);
+      
+      await set(newPostRef, {
+        ...formData,
+        // ★ 수정: 모임이면 닉네임 없이('') 저장 (기존 '모임장' 제거)
+        name: isVillageCategory ? '' : formData.name,
+        content: isVillageCategory ? '' : formData.content, 
+        uid: isVillageCategory ? '' : formData.uid, 
+        villageNumber: isVillageCategory ? formData.villageNumber : '',
+        // password 필드 저장 제거
+        scheduledTime: isVillageCategory ? scheduledTime : '',
+        startTime: '', 
+        imageUrl: imageUrl,
+        createdAt: new Date().toISOString(),
+        likes: 0,
+      });
+
+      const newPostId = newPostRef.key;
+      const updatedMyPosts = [...myCreatedPostIds, newPostId];
+      setMyCreatedPostIds(updatedMyPosts);
+      localStorage.setItem('myCreatedPosts', JSON.stringify(updatedMyPosts));
+
+      // 초기화
+      setFormData({ 
+        name: '', uid: '', villageNumber: '', password: '', startTime: '', 
+        title: '', content: '', category: CATEGORIES[0] 
+      });
+      setImageFile(null);
+      setImagePreview('');
+      setIsFormOpen(false);
+    } catch (error) {
+      console.error('업로드 실패:', error);
+      alert('오류가 발생했습니다.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const handleToggleComments = (postId) => {
-    setShowComments((prev) => ({
-      ...prev,
-      [postId]: !prev[postId],
-    }));
+const handleDeletePost = async (postId) => {
+    if (window.confirm("정말 삭제하시겠습니까?")) {
+      try {
+        await remove(ref(db, `board/posts/${postId}`));
+        alert("삭제되었습니다.");
+        // (선택사항) 로컬 스토리지 목록에서도 제거하고 싶다면 여기서 처리 가능하나, 
+        // 굳이 안 해도 기능상 문제는 없습니다.
+      } catch (error) {
+        console.error("삭제 실패:", error);
+        alert("삭제 중 오류가 발생했습니다.");
+      }
+    }
+  };
+  
+  const handleLikeToggle = async (postId) => {
+    const isAlreadyLiked = likedPostIds.includes(postId);
+    const postLikesRef = ref(db, `board/posts/${postId}/likes`);
+    try {
+      await runTransaction(postLikesRef, (curr) => {
+        const val = curr || 0;
+        return isAlreadyLiked ? (val > 0 ? val - 1 : 0) : val + 1;
+      });
+      let updatedLikes = isAlreadyLiked 
+        ? likedPostIds.filter(id => id !== postId) 
+        : [...likedPostIds, postId];
+      setLikedPostIds(updatedLikes);
+      localStorage.setItem('myLikedPosts', JSON.stringify(updatedLikes));
+    } catch (error) { console.error(error); }
   };
 
-  const handleLike = (postId) => {
-    // 이미 이 기기에서 좋아요 한 글이면 무시
-    if (likedPostIds.includes(postId)) return;
+  const filteredPosts = posts.filter((post) => {
+    // ★ 추가: 필터가 '내가 쓴 글'이면 -> 내 로컬 목록(myCreatedPostIds)에 있는 ID인지 확인
+    if (activeFilter === '내가 쓴 글') {
+      return myCreatedPostIds.includes(post.id);
+    }
 
-    setPosts((prev) => {
-      const updated = prev.map((p) =>
-        p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p
-      );
-      savePostsToDB(updated);
-      return updated;
-    });
+    // 기존 로직
+    if (activeFilter === '전체') return true;
+    return post.category === activeFilter;
+  });
 
-    // 로컬 스토리지에 이 기기에서 좋아요한 글 ID 기록
-    setLikedPostIds((prev) => [...prev, postId]);
+  const formatTime = (isoString) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    // 오전/오후 표시 추가
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? '오후' : '오전';
+    const displayHours = hours % 12 || 12; // 0시를 12시로 표시
+    const displayMinutes = minutes.toString().padStart(2, '0');
+    return `${ampm} ${displayHours}:${displayMinutes}`;
   };
-
-  const handleCommentChange = (postId, value) => {
-    setCommentDrafts((prev) => ({ ...prev, [postId]: value }));
-  };
-
-  const addComment = (postId) => {
-    const text = (commentDrafts[postId] || '').trim();
-    if (!text) return;
-
-    const newComment = {
-      ...createEmptyComment(),
-      text,
-      author: '익명',
-    };
-
-    setPosts((prev) => {
-      const updated = prev.map((p) =>
-        p.id === postId
-          ? { ...p, comments: [...(p.comments || []), newComment] }
-          : p
-      );
-      savePostsToDB(updated);
-      return updated;
-    });
-    setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
-  };
-
-  const countAllComments = (comments = []) => comments.length;
 
   const styles = {
-    page: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      padding: '16px',
-      boxSizing: 'border-box',
-      overflow: 'hidden',
-      backgroundColor: isDarkMode ? '#0b1120' : '#f8fafc',
-      color: isDarkMode ? '#e5e7eb' : '#0f172a',
-    },
-    layout: {
-      display: 'flex',
-      gap: '16px',
-      height: '100%',
-      flexDirection: 'column',
-    },
-    header: {
-      marginBottom: '8px',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    title: {
-      fontSize: '20px',
-      fontWeight: 'bold',
-    },
-    form: {
-      backgroundColor: isDarkMode ? '#020617' : '#ffffff',
-      borderRadius: '12px',
-      padding: '12px 14px',
-      boxShadow: isDarkMode
-        ? '0 10px 30px rgba(15,23,42,0.9)'
-        : '0 8px 20px rgba(15,23,42,0.08)',
-      border: isDarkMode ? '1px solid #1e293b' : '1px solid #e2e8f0',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-    },
-    formRow: {
-      display: 'flex',
-      gap: '8px',
-      flexWrap: 'wrap',
-    },
-    input: {
-      flex: 1,
-      minWidth: '120px',
-      padding: '6px 10px',
-      borderRadius: '8px',
-      border: isDarkMode ? '1px solid #1e293b' : '1px solid #cbd5f5',
-      backgroundColor: isDarkMode ? '#020617' : '#f8fafc',
-      color: isDarkMode ? '#e5e7eb' : '#0f172a',
-      fontSize: '13px',
-    },
-    textarea: {
-      width: '100%',
-      minHeight: '70px',
-      resize: 'vertical',
-      padding: '6px 10px',
-      borderRadius: '8px',
-      border: isDarkMode ? '1px solid #1e293b' : '1px solid #cbd5f5',
-      backgroundColor: isDarkMode ? '#020617' : '#f8fafc',
-      color: isDarkMode ? '#e5e7eb' : '#0f172a',
-      fontSize: '13px',
-    },
-    submitBtn: {
-      alignSelf: 'flex-end',
-      padding: '6px 14px',
-      borderRadius: '999px',
-      border: 'none',
-      cursor: 'pointer',
-      background:
-        'linear-gradient(135deg, #3b82f6, #22c55e, #eab308)',
-      color: '#0f172a',
-      fontWeight: 'bold',
-      fontSize: '13px',
-      boxShadow: '0 8px 20px rgba(37,99,235,0.35)',
-    },
-    uploadHint: {
-      fontSize: '11px',
-      color: isDarkMode ? '#9ca3af' : '#64748b',
-    },
-    listWrapper: {
-      flex: 1,
-      overflowY: 'auto',
-      paddingRight: '4px',
-      marginTop: '8px',
-    },
-    postCard: {
-      backgroundColor: isDarkMode ? '#020617' : '#ffffff',
-      borderRadius: '14px',
-      padding: '10px 12px',
-      marginBottom: '10px',
-      border: isDarkMode ? '1px solid #1e293b' : '1px solid #e2e8f0',
-      boxShadow: isDarkMode
-        ? '0 8px 24px rgba(15,23,42,0.85)'
-        : '0 6px 18px rgba(15,23,42,0.08)',
-    },
-    postHeader: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: '8px',
-      marginBottom: '6px',
-    },
-    postUser: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '2px',
-      minWidth: 0,
-    },
-    userText: {
-      display: 'flex',
-      flexDirection: 'column',
-      minWidth: 0,
-    },
-    name: {
-      fontSize: '13px',
-      fontWeight: 600,
-      whiteSpace: 'nowrap',
-      textOverflow: 'ellipsis',
-      overflow: 'hidden',
-    },
-    uid: {
-      fontSize: '11px',
-      color: isDarkMode ? '#64748b' : '#64748b',
-      whiteSpace: 'nowrap',
-      textOverflow: 'ellipsis',
-      overflow: 'hidden',
-    },
-    postMeta: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-      fontSize: '11px',
-      color: isDarkMode ? '#64748b' : '#6b7280',
-    },
-    badge: {
-      padding: '2px 6px',
-      borderRadius: '999px',
-      backgroundColor: isDarkMode ? '#0f172a' : '#eff6ff',
-      border: isDarkMode ? '1px solid #1e293b' : '1px solid #bfdbfe',
-    },
-    counts: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-      fontSize: '11px',
-    },
-    countChip: {
-      padding: '2px 6px',
-      borderRadius: '999px',
-      backgroundColor: isDarkMode ? '#020617' : '#f1f5f9',
-    },
-    titleRow: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: '8px',
-      marginBottom: '4px',
-      marginTop: '2px',
-    },
-    titleText: {
-      fontSize: '14px',
-      fontWeight: 700,
-      color: isDarkMode ? '#e5e7eb' : '#0f172a',
-    },
-    actions: {},
-    likeBtn: {
-      fontSize: '11px',
-      padding: '2px 6px',
-      borderRadius: '999px',
-      border: 'none',
-      cursor: 'pointer',
-      backgroundColor: '#f97316',
-      color: '#0f172a',
-      fontWeight: 600,
-    },
-    content: {
-      fontSize: '13px',
-      lineHeight: 1.5,
-      whiteSpace: 'pre-wrap',
-      marginBottom: '6px',
-    },
-    imageWrapper: {
-      marginTop: '6px',
-      marginBottom: '4px',
-      borderRadius: '10px',
-      overflow: 'hidden',
-      maxHeight: '200px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: isDarkMode ? '#020617' : '#f1f5f9',
-    },
-    postImage: {
-      width: '100%',
-      height: 'auto',
-      maxHeight: '200px',
-      objectFit: 'contain',
-      display: 'block',
-    },
-    commentsSection: {
-      marginTop: '6px',
-      borderTop: isDarkMode ? '1px solid #1f2937' : '1px solid #e5e7eb',
-      paddingTop: '6px',
-    },
-    commentInputRow: {
-      display: 'flex',
-      gap: '4px',
-      marginBottom: '6px',
-    },
-    commentInput: {
-      flex: 1,
-      padding: '4px 8px',
-      borderRadius: '999px',
-      border: isDarkMode ? '1px solid #1e293b' : '1px solid #cbd5f5',
-      backgroundColor: isDarkMode ? '#020617' : '#f8fafc',
-      color: isDarkMode ? '#e5e7eb' : '#0f172a',
-      fontSize: '12px',
-    },
-    commentBtn: {
-      fontSize: '11px',
-      padding: '3px 8px',
-      borderRadius: '999px',
-      border: 'none',
-      cursor: 'pointer',
-      backgroundColor: '#22c55e',
-      color: '#022c22',
-      fontWeight: 600,
-    },
-    commentList: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '4px',
-      maxHeight: '160px',
-      overflowY: 'auto',
-      paddingRight: '2px',
-    },
-    comment: {
-      fontSize: '12px',
-      padding: '4px 6px',
-      borderRadius: '10px',
-      backgroundColor: isDarkMode ? '#020617' : '#f8fafc',
-      border: isDarkMode ? '1px solid #1e293b' : '1px solid #e5e7eb',
-    },
-    commentHeader: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '2px',
-    },
-    commentAuthor: {
-      fontWeight: 600,
-    },
-    commentActions: {
-      display: 'flex',
-      gap: '4px',
-      fontSize: '11px',
-    },
-    replyList: {
-      marginTop: '3px',
-      paddingLeft: '10px',
-      borderLeft: isDarkMode ? '1px dashed #1e293b' : '1px dashed #cbd5f5',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '2px',
-    },
-    replyInputRow: {
-      display: 'flex',
-      gap: '4px',
-      marginTop: '3px',
-    },
-    replyInput: {
-      flex: 1,
-      padding: '3px 6px',
-      borderRadius: '999px',
-      border: isDarkMode ? '1px solid #1e293b' : '1px solid #cbd5f5',
-      backgroundColor: isDarkMode ? '#020617' : '#f8fafc',
-      color: isDarkMode ? '#e5e7eb' : '#0f172a',
-      fontSize: '11px',
-    },
-    replyBtn: {
-      fontSize: '11px',
-      padding: '2px 6px',
-      borderRadius: '999px',
-      border: 'none',
-      cursor: 'pointer',
-      backgroundColor: '#38bdf8',
-      color: '#0f172a',
-      fontWeight: 600,
-    },
+    container: { padding: '24px', backgroundColor: isDarkMode ? '#262626' : '#f8fafc', minHeight: '100vh', color: isDarkMode ? '#e2e8f0' : '#1e293b' },
+    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
+    title: { fontSize: '24px', fontWeight: 'bold' },
+    writeButton: { backgroundColor: '#8b8b8b', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' },
+    
+    filterBar: { display: 'flex', gap: '10px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '8px', flexWrap: 'wrap' },
+    filterButton: (isActive) => ({ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', backgroundColor: isActive ? '#3b82f6' : (isDarkMode ? '#4f4f4f' : '#e2e8f0'), color: isActive ? '#fff' : (isDarkMode ? '#94a3b8' : '#475569'), transition: 'all 0.2s' }),
+
+    formContainer: { marginBottom: '32px', padding: '20px', backgroundColor: isDarkMode ? '#3d3d3d' : '#ffffff', borderRadius: '12px', border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px' },
+    row: { display: 'flex', gap: '12px', flexWrap: 'wrap' },
+    input: { flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', color: isDarkMode ? '#fff' : '#000', boxSizing: 'border-box', minWidth: '120px' },
+    select: { padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', color: isDarkMode ? '#fff' : '#000', boxSizing: 'border-box', cursor: 'pointer' },
+    textarea: { width: '100%', minHeight: '80px', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', color: isDarkMode ? '#fff' : '#000', resize: 'vertical', boxSizing: 'border-box' },
+    submitBtn: { alignSelf: 'flex-end', padding: '8px 20px', backgroundColor: isUploading ? '#94a3b8' : '#333333', color: '#fff', border: 'none', borderRadius: '6px', cursor: isUploading ? 'not-allowed' : 'pointer', fontWeight: 'bold' },
+    
+    gridContainer: { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: isMobile ? '10px' : '20px', width: '100%' },    cardBase: { backgroundColor: isDarkMode ? '#2d2d2d' : '#ffffff', borderRadius: '16px', border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', overflow: 'hidden' },
+    textCardContentPadding: { padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box', minHeight: '300px' },
+    categoryBadge: (isOverlay) => ({ display: 'inline-block', fontSize: '11px', padding: '4px 8px', borderRadius: '4px', marginBottom: '8px', backgroundColor: isOverlay ? 'rgba(255,255,255,0.2)' : (isDarkMode ? '#414141' : '#e2e8f0'), color: isOverlay ? '#fff' : (isDarkMode ? '#cbd5e1' : '#475569'), fontWeight: 'bold' }),
+    cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '4px' },
+    cardTitle: { fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' },
+    cardContent: { fontSize: '14px', lineHeight: '1.6', flex: 1, marginBottom: '16px', whiteSpace: 'pre-wrap', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 8, WebkitBoxOrient: 'vertical' },
+    cardFooter: { borderTop: isDarkMode ? '1px solid #334155' : '1px solid #f1f5f9', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#64748b' },
+    overlayFooter: { borderTop: '1px solid rgba(255, 255, 255, 0.2)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#e2e8f0' },
+    nameBadge: { backgroundColor: isDarkMode ? '#414141' : '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: '600', fontSize: '12px' },
+    likeButton: (isLiked, isOverlay = false) => ({ border: isLiked ? '1px solid #f87171' : (isOverlay ? '1px solid rgba(255,255,255,0.5)' : (isDarkMode ? '1px solid #334155' : '1px solid #cbd5e1')), backgroundColor: isLiked ? 'rgba(248, 113, 113, 0.1)' : 'transparent', color: isLiked ? '#f87171' : (isOverlay ? '#fff' : (isDarkMode ? '#94a3b8' : '#64748b')), cursor: 'pointer', padding: '4px 10px', borderRadius: '99px', fontSize: '12px', fontWeight: '600', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '4px' }),
+    lockButton: { cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #ef4444', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(239, 68, 68, 0.1)' },
+    timeBadge: { fontSize: '11px', backgroundColor: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '500' },
+    paginationContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginTop: '40px', marginBottom: '20px' },
+    pageButton: { padding: '8px 16px', borderRadius: '8px', border: isDarkMode ? '1px solid #334155' : '1px solid #cbd5e1', backgroundColor: isDarkMode ? '#414141' : '#fff', color: isDarkMode ? '#e2e8f0' : '#1e293b', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' },
+    pageInfo: { fontSize: '14px', fontWeight: 'bold', color: isDarkMode ? '#cbd5e1' : '#475569' },
   };
 
+  const isVillageInputRequired = VILLAGE_CATEGORIES.includes(formData.category);
+
+  // ★ 페이징 계산 로직 (return 문 직전에 위치)
+  const indexOfLastPost = currentPage * postsPerPage;
+  const indexOfFirstPost = indexOfLastPost - postsPerPage;
+  const currentPosts = filteredPosts.slice(indexOfFirstPost, indexOfLastPost);
+  const totalPages = Math.ceil(filteredPosts.length / postsPerPage);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
   return (
-    <div style={styles.page}>
+    <div style={styles.container}>
+      <style>{hoverStyles}</style>
+
       <div style={styles.header}>
-        <div style={styles.title}>👥 친구 찾기</div>
-        <button
-          type="button"
-          onClick={() => setIsFormOpen((prev) => !prev)}
-          style={{
-            padding: '6px 10px',
-            borderRadius: '999px',
-            border: 'none',
-            fontSize: '12px',
-            cursor: 'pointer',
-            backgroundColor: isFormOpen ? '#0f172a' : '#22c55e',
-            color: isFormOpen ? '#e5e7eb' : '#022c22',
-            fontWeight: 600,
-          }}
-        >
-          {isFormOpen ? '닫기' : '글쓰기'}
+        <h1 style={styles.title}>커뮤니티</h1>
+        <button style={styles.writeButton} onClick={() => setIsFormOpen(!isFormOpen)}>
+          {isFormOpen ? '닫기' : '+ 글쓰기'}
         </button>
       </div>
 
+      <div style={styles.filterBar}>
+        <button 
+          style={styles.filterButton(activeFilter === '전체')} 
+          onClick={() => { setActiveFilter('전체'); setCurrentPage(1); }} // 페이지 초기화 추가
+        >
+          전체
+        </button>
+        <button 
+          style={styles.filterButton(activeFilter === '내가 쓴 글')} 
+          onClick={() => { setActiveFilter('내가 쓴 글'); setCurrentPage(1); }}
+        >
+          🙋‍♂️ 내가 쓴 글
+        </button>
+
+        {CATEGORIES.map((cat) => (
+          <button 
+            key={cat} 
+            style={styles.filterButton(activeFilter === cat)} 
+            onClick={() => { setActiveFilter(cat); setCurrentPage(1); }} // 페이지 초기화 추가
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
       {isFormOpen && (
-        <div style={styles.form}>
-          <div style={styles.formRow}>
-            <input
-              style={styles.input}
-              name="name"
-              placeholder="이름"
-              value={form.name}
-              onChange={handleChange}
-            />
-            <input
-              style={styles.input}
-              name="uid"
-              placeholder="게임 UID / 코드"
-              value={form.uid}
-              onChange={handleChange}
-            />
-          </div>
-          <div style={styles.formRow}>
-            <input
-              style={styles.input}
-              name="title"
-              placeholder="제목 (예: 밤에 같이 농사하실 분!)"
-              value={form.title}
-              onChange={handleChange}
-            />
-          </div>
-          <textarea
-            style={styles.textarea}
-            name="content"
-            placeholder="하고 싶은 말, 시간대, 조건 등을 자유롭게 적어 주세요."
-            value={form.content}
-            onChange={handleChange}
-          />
-          <div style={{ marginTop: '4px' }}>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleProfileFileChange}
-              style={{ width: '100%', fontSize: '11px' }}
-            />
-            <div style={styles.uploadHint}>
-              폰/PC에서 이미지를 선택하면 함께 업로드됩니다. (선택 안 해도 글은 등록돼요)
-            </div>
-            {profilePreview && (
-              <div
-                style={{
-                  marginTop: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
-                <span style={{ fontSize: '11px' }}>이미지 미리보기</span>
-                <img
-                  src={profilePreview}
-                  alt="이미지 미리보기"
-                  style={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: '8px',
-                    objectFit: 'cover',
-                  }}
+        <form style={styles.formContainer} onSubmit={handleSubmit}>
+          <select style={styles.select} name="category" value={formData.category} onChange={handleChange}>
+            {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
+
+          <div style={styles.row}>
+            {!isVillageInputRequired && (
+              <input style={styles.input} name="name" placeholder="닉네임" value={formData.name} onChange={handleChange} />
+            )}
+            
+            {isVillageInputRequired ? (
+              <>
+                <input 
+                  type="text"
+                  inputMode="numeric"
+                  style={styles.input} 
+                  name="villageNumber" 
+                  placeholder="🏠 마을 번호" 
+                  value={formData.villageNumber} 
+                  onChange={handleChange} 
+
                 />
-              </div>
+                <input 
+                  type="time"
+                  style={styles.input} 
+                  name="startTime" 
+                  value={formData.startTime} 
+                  onChange={handleChange} 
+                />
+              </>
+            ) : (
+              <input 
+                style={styles.input} 
+                name="uid" 
+                placeholder="UID" 
+                value={formData.uid} 
+                onChange={handleChange} 
+              />
             )}
           </div>
-          <button 
-            type="button"
-            onClick={handleSubmit}
-            style={styles.submitBtn} 
-            disabled={isUploading}
-          >
-            {isUploading ? '이미지 업로드 중...' : '글 올리기'}
+
+          <input style={styles.input} name="title" placeholder="제목" value={formData.title} onChange={handleChange} />
+          {!isVillageInputRequired && (
+            <>
+              <textarea 
+                style={styles.textarea} 
+                name="content" 
+                placeholder="내용을 입력하세요" 
+                value={formData.content} 
+                onChange={handleChange} 
+              />
+              
+              <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                <input type="file" accept="image/*" onChange={handleImageChange} style={{fontSize:'14px', color: isDarkMode ? '#94a3b8':'#64748b'}} />
+                {imagePreview && <img src={imagePreview} alt="preview" style={{width:'40px', height:'40px', objectFit:'cover', borderRadius:'4px'}} />}
+              </div>
+            </>
+          )}
+          
+          <button type="submit" style={styles.submitBtn} disabled={isUploading}>
+            {isUploading ? '등록 중...' : '등록하기'}
           </button>
-        </div>
+        </form>
       )}
 
-      <div style={styles.listWrapper}>
-        {posts.map((post) => {
-          const totalComments = countAllComments(post.comments);
-          const isCommentsOpen = showComments[post.id] || false;
-          const created =
-            post.createdAt &&
-            new Date(post.createdAt).toLocaleString('ko-KR', {
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-            });
+      <div style={styles.gridContainer}>
+        {currentPosts.map((post) => {
+          const isLiked = likedPostIds.includes(post.id);
+          const hasImage = !!post.imageUrl;
+          const hasVillageInfo = !!post.villageNumber;
 
-          return (
-            <div key={post.id} style={styles.postCard}>
-              <div style={styles.postHeader}>
-                <div style={styles.postUser}>
-                  <span style={styles.name}>{post.name}</span>
-                  <span style={styles.uid}>{post.uid}</span>
-                </div>
-                <div style={styles.postMeta}>
-                  {created && <span style={styles.badge}>{created}</span>}
-                  <div style={styles.counts}>
-                    <span style={styles.countChip}>조회 {post.views}</span>
-                    <span style={styles.countChip}>좋아요 {post.likes}</span>
-                    <span style={styles.countChip}>
-                      댓글 {totalComments}
-                    </span>
+          const CardContentInner = ({ isOverlay = false }) => (
+            <>
+              <div>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <div style={styles.categoryBadge(isOverlay)}>
+                    {post.category || '기타'}
                   </div>
+                  {post.scheduledTime && (
+                    <div style={styles.timeBadge}>
+                      ⏰ {formatTime(post.scheduledTime)} 시작
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              <div style={styles.titleRow}>
-                <div style={styles.titleText}>
-                  {post.title}
-                </div>
-                <button
-                  type="button"
-                  style={styles.likeBtn}
-                  onClick={() => handleLike(post.id)}
-                >
-                  👍 좋아요
-                </button>
-              </div>
-
-              <div style={styles.content}>{post.content}</div>
-              
-              {post.photo && (
-                <div style={styles.imageWrapper}>
-                  <img
-                    src={post.photo}
-                    alt={post.title}
-                    style={styles.postImage}
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                </div>
-              )}
-
-              {!isCommentsOpen ? (
-                <div style={{ marginTop: '8px', textAlign: 'center' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleComments(post.id)}
-                    style={{
-                      fontSize: '11px',
-                      padding: '4px 12px',
-                      borderRadius: '999px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0',
-                      color: isDarkMode ? '#e5e7eb' : '#0f172a',
-                      fontWeight: 600,
-                    }}
-                  >
-                    댓글 보기 ({totalComments})
-                  </button>
-                </div>
-              ) : (
-                <div style={styles.commentsSection}>
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center',
-                    marginBottom: '6px'
-                  }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600 }}>
-                      댓글 {totalComments}개
+                <div style={styles.cardHeader}>
+                  {post.name && (
+                    <span style={{...styles.nameBadge, backgroundColor: isOverlay?'rgba(255,255,255,0.2)':'undefined', color: isOverlay?'#fff':'inherit'}}>
+                      {post.name}
                     </span>
+                  )}
+                  
+                  {/* ★ 수정: 비밀번호 표시 삭제 */}
+                  {hasVillageInfo ? (
+                    <span style={{ fontSize: '11px', color: isOverlay ? '#cbd5e1' : '#3b82f6', fontWeight: 'bold' }}>
+                      🏠 {post.villageNumber}
+                    </span>
+                  ) : (
+                    post.uid && <span style={{ fontSize: '11px', color: isOverlay ? '#cbd5e1' : '#94a3b8' }}>{post.uid}</span>
+                  )}
+                </div>
+
+                <div style={{...styles.cardTitle, color: isOverlay ? '#fff' : styles.cardTitle.color}}>{post.title}</div>
+                <div style={{...styles.cardContent, color: isOverlay ? '#e2e8f0' : styles.cardContent.color}}>{post.content}</div>
+              </div>
+              
+              <div style={isOverlay ? styles.overlayFooter : styles.cardFooter}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>{new Date(post.createdAt).toLocaleDateString()}</span>
+                  
+                  {/* ★ [추가] 내가 쓴 글이면 삭제 버튼 표시 */}
+                  {myCreatedPostIds.includes(post.id) && (
                     <button
-                      type="button"
-                      onClick={() => handleToggleComments(post.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeletePost(post.id);
+                      }}
                       style={{
-                        fontSize: '11px',
-                        padding: '2px 8px',
-                        borderRadius: '999px',
                         border: 'none',
+                        background: 'transparent',
+                        color: isOverlay ? '#fca5a5' : '#ef4444',
                         cursor: 'pointer',
-                        backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0',
-                        color: isDarkMode ? '#e5e7eb' : '#0f172a',
-                        fontWeight: 600,
+                        fontSize: '12px',
+                        textDecoration: 'underline',
+                        padding: 0
                       }}
                     >
-                      숨기기
+                      삭제
                     </button>
-                  </div>
+                  )}
+                </div>
 
-                  <div style={styles.commentList}>
-                    {post.comments.map((c) => (
-                      <div key={c.id} style={styles.comment}>
-                        <div style={styles.commentHeader}>
-                          <span style={styles.commentAuthor}>
-                            {c.author || '익명'}
-                          </span>
-                        </div>
-                        <div>{c.text}</div>
-                      </div>
-                    ))}
-                  </div>
+                <button 
+                  style={styles.likeButton(isLiked, isOverlay)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLikeToggle(post.id);
+                  }}
+                >
+                  {isLiked ? '❤️' : '🤍'} {post.likes || 0}
+                </button>
+              </div>
+            </>
+          );
 
-                  <div style={styles.commentInputRow}>
-                    <input
-                      style={styles.commentInput}
-                      placeholder="댓글을 입력하세요"
-                      value={commentDrafts[post.id] || ''}
-                      onChange={(e) =>
-                        handleCommentChange(post.id, e.target.value)
-                      }
-                    />
-                    <button
-                      type="button"
-                      style={styles.commentBtn}
-                      onClick={() => addComment(post.id)}
-                    >
-                      등록
-                    </button>
+          return (
+            <div key={post.id} style={styles.cardBase}>
+              {hasImage ? (
+                <div className="image-card-container">
+                  <img src={post.imageUrl} alt={post.title} className="image-card-bg" />
+                  <div className="image-card-overlay">
+                    <CardContentInner isOverlay={true} />
                   </div>
+                </div>
+              ) : (
+                <div style={styles.textCardContentPadding}>
+                  <CardContentInner isOverlay={false} />
                 </div>
               )}
             </div>
           );
         })}
-        {posts.length === 0 && (
-          <div
-            style={{
-              fontSize: '13px',
-              color: isDarkMode ? '#64748b' : '#9ca3af',
-              textAlign: 'center',
-              marginTop: '16px',
-            }}
-          >
-            첫 친구 찾기 글을 남겨 보세요!
-          </div>
-        )}
       </div>
+      {/* ★ 페이지네이션 컨트롤 추가 */}
+      {filteredPosts.length > 0 && (
+        <div style={styles.paginationContainer}>
+          <button 
+            style={styles.pageButton} 
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            이전
+          </button>
+          
+          <span style={styles.pageInfo}>
+            {currentPage} / {totalPages}
+          </span>
+          
+          <button 
+            style={styles.pageButton} 
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            다음
+          </button>
+        </div>
+      )}
+
+      {/* 등록된 글이 없습니다 (filteredPosts 기준) */}
+      {filteredPosts.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8', gridColumn: '1 / -1' }}>
+          등록된 글이 없습니다.
+        </div>
+      )}
     </div>
   );
 };
 
-export default FriendsPage;
+export default BoardPage;

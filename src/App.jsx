@@ -220,7 +220,7 @@ function App() {
       width: '100%',
       boxSizing: 'border-box',
       padding: isMobile ? '14px 14px' : '16px 20px',
-      backgroundColor: isDarkMode ? '#1f2937' : '#e0f2fe',
+      backgroundColor: isDarkMode ? '#414141' : '#e0f2fe',
       color: isDarkMode ? '#e5e7eb' : '#0f172a',
       fontSize: '14px',
       display: 'flex',
@@ -367,7 +367,7 @@ function App() {
               {tab === 'settings' && <Settings size={isMobile ? 20 : 24} />}
             </div>
             <span style={{ fontSize: '10px' }}>
-              {tab === 'map' ? '맵스' : tab === 'home' ? '공유' : tab === 'friends' ? '친구' : '설정'}
+              {tab === 'map' ? '맵스' : tab === 'home' ? '공유' : tab === 'friends' ? '커뮤니티' : '설정'}
             </span>
           </button>
         ))}
@@ -505,8 +505,8 @@ function App() {
           </div>
         )}
         {activeTab === 'home' && <Placeholder text="🏠 집 공유페이지 개발중" />}
-        {activeTab === 'friends' && <Placeholder text="👥 친구 찾기페이지 개발중" />}
-        {/* {activeTab === 'friends' && <FriendsPage isDarkMode={isDarkMode} />} */}
+        {/* {activeTab === 'friends' && <Placeholder text="👥 친구 찾기페이지 개발중" />} */}
+        {activeTab === 'friends' && <FriendsPage isDarkMode={isDarkMode} />}
         {activeTab === 'settings' && (
           <SettingsPage 
             isDarkMode={isDarkMode} 

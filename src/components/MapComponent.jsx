@@ -41,6 +41,7 @@ const MapComponent = ({ markers = [] }) => {
       maxBoundsViscosity={1.0}    
       zoomControl={false}
     >
+
       <ImageOverlay url="/duduMap.jpg" bounds={bounds} />
 
       {markers.map((marker, index) => {
