@@ -3,7 +3,7 @@ import { db, storage } from '../firebase';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { ref, onValue, set, push, runTransaction, remove } from 'firebase/database';
 
-const CATEGORIES = ['친구찾아요', '바다낚시', '곤충유인', '꽥꽥이 점핑', '버블머신'];
+const CATEGORIES = ['🧑‍🤝‍🧑친구찾아요', '🎣바다낚시', '🐛곤충유인', '🪿꽥꽥이 점핑', '🫧버블머신'];
 const VILLAGE_CATEGORIES = ['바다낚시', '곤충유인', '꽥꽥이 점핑', '버블머신'];
 
 const BoardPage = ({ isDarkMode }) => {
@@ -272,7 +272,7 @@ const handleDeletePost = async (postId) => {
     container: { padding: '24px', backgroundColor: isDarkMode ? '#262626' : '#f8fafc', minHeight: '100vh', color: isDarkMode ? '#e2e8f0' : '#1e293b' },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
     title: { fontSize: '24px', fontWeight: 'bold' },
-    writeButton: { backgroundColor: '#8b8b8b', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' },
+    writeButton: { backgroundColor: '#3b82f6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' },
     
     filterBar: { display: 'flex', gap: '10px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '8px', flexWrap: 'wrap' },
     filterButton: (isActive) => ({ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', backgroundColor: isActive ? '#3b82f6' : (isDarkMode ? '#4f4f4f' : '#e2e8f0'), color: isActive ? '#fff' : (isDarkMode ? '#94a3b8' : '#475569'), transition: 'all 0.2s' }),
@@ -282,7 +282,7 @@ const handleDeletePost = async (postId) => {
     input: { flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', color: isDarkMode ? '#fff' : '#000', boxSizing: 'border-box', minWidth: '120px' },
     select: { padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', color: isDarkMode ? '#fff' : '#000', boxSizing: 'border-box', cursor: 'pointer' },
     textarea: { width: '100%', minHeight: '80px', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', color: isDarkMode ? '#fff' : '#000', resize: 'vertical', boxSizing: 'border-box' },
-    submitBtn: { alignSelf: 'flex-end', padding: '8px 20px', backgroundColor: isUploading ? '#94a3b8' : '#333333', color: '#fff', border: 'none', borderRadius: '6px', cursor: isUploading ? 'not-allowed' : 'pointer', fontWeight: 'bold' },
+    submitBtn: { alignSelf: 'flex-end', padding: '8px 20px', backgroundColor: isUploading ? '#94a3b8' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: isUploading ? 'not-allowed' : 'pointer', fontWeight: 'bold' },
     
     gridContainer: { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: isMobile ? '10px' : '20px', width: '100%' },    cardBase: { backgroundColor: isDarkMode ? '#2d2d2d' : '#ffffff', borderRadius: '16px', border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', overflow: 'hidden' },
     textCardContentPadding: { padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box', minHeight: '300px' },
