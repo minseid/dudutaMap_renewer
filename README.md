@@ -1,16 +1,26 @@
-# React + Vite
+# DUDUTA-MAPS
+두근두근타운의 재료를 표시해주는 맵스
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## 프로젝트 소개
+원신맵스를 오마주하여 만든 재료표시 사이트
 
-Currently, two official plugins are available:
+## MVP 개발기간 
+* 2026.01.10 ~ 2026.01.14
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 개발자
+ - 1인개발 김민서 : 기획 개발 및 배포
 
-## React Compiler
+ ### 개발환경
+ - React + Vita
+ - IDE : VsCode / Curser
+ - DB : Firebase
+ - 배포 : Vercel
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 주요 기능
+- 재료를 필터링하여 위치를 확인
+- 커뮤니티로 친구찾기 및 모임구성(LocalStorage방식)
 
-## Expanding the ESLint configuration
+### 사이트 링크
+<https://duduta.kro.kr/>
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+![alt text](image.png)
