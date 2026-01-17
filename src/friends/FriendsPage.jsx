@@ -269,7 +269,7 @@ const handleDeletePost = async (postId) => {
   };
 
   const styles = {
-    container: { padding: '24px', backgroundColor: isDarkMode ? '#262626' : '#f8fafc', minHeight: '100vh', color: isDarkMode ? '#e2e8f0' : '#1e293b' },
+    container: { padding: '24px', backgroundColor: isDarkMode ? '#262626' : '#f8fafc', minHeight: '100vh', color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: isMobile ? '150px' : '40px', },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
     title: { fontSize: '24px', fontWeight: 'bold' },
     writeButton: { backgroundColor: '#3b82f6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' },
