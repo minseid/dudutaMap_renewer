@@ -14,7 +14,7 @@ const SettingsPage = ({ isDarkMode, setIsDarkMode }) => {
   };
 
   const handleContact = () => {
-    window.location.href ="https://open.kakao.com/o/s2fGH6ai"
+    window.location.href ="https://open.kakao.com/o/s1d1Fici"
   }
 
   return (

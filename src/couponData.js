@@ -1,4 +1,4 @@
-export const COUPON_NOTICE_TEXT = '1/18일 형광석 : 2번홈 , 참나무 : 2번 홈';
+export const COUPON_NOTICE_TEXT = '1/19일 형광석 : 12번홈 , 참나무 : 9번 홈';
 
 // 사용 가능한 모든 리딤 코드 목록을 여기에 관리
 export const COUPON_INFO = {
